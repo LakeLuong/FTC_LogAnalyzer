@@ -1,0 +1,151 @@
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.*;
+import java.nio.file.attribute.FileTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+public class FTCLogAnalyzer {
+
+    // Regex pattern for final parsing
+    private static final Pattern TARGET_PATTERN = Pattern.compile(".*(\\s[EW]/|(?i)error|(?i)warning).*");
+    
+    // Formatter to make the file dates look clean and readable
+    private static final DateTimeFormatter DATE_FORMATTER = 
+        DateTimeFormatter.ofPattern("MM/dd/yyyy HH:mm:ss").withZone(ZoneId.systemDefault());
+
+    // A small helper class to store information about each log file together
+    static class LogInfo {
+        Path path;
+        int errorCount;
+        String dateModified;
+
+        LogInfo(Path path, int errorCount, String dateModified) {
+            this.path = path;
+            this.errorCount = errorCount;
+            this.dateModified = dateModified;
+        }
+    }
+
+    public static void main(String[] args) {
+        // Using your exact Desktop path
+        String directoryPath = "C:\\Users\\ll12027884\\Desktop\\FTC_Log_Viewer"; 
+        Path dirPath = Paths.get(directoryPath);
+
+        if (!Files.exists(dirPath) || !Files.isDirectory(dirPath)) {
+            System.out.println("Directory does not exist: " + dirPath.toAbsolutePath());
+            return;
+        }
+
+        System.out.println("Scanning directory and counting errors... Please wait.\n");
+
+        List<LogInfo> logFiles = new ArrayList<>();
+
+        // 1. Gather all files and do a pre-scan to count errors and get dates
+        try (Stream<Path> paths = Files.walk(dirPath)) {
+            List<Path> txtFiles = paths.filter(Files::isRegularFile)
+                                       .filter(path -> path.toString().endsWith(".txt"))
+                                       .collect(Collectors.toList());
+
+            for (Path file : txtFiles) {
+                int errors = countErrors(file);
+                String date = getFileDate(file);
+                logFiles.add(new LogInfo(file, errors, date));
+            }
+        } catch (IOException e) {
+            System.err.println("Error walking directory: " + e.getMessage());
+            return;
+        }
+
+        if (logFiles.isEmpty()) {
+            System.out.println("No .txt files found in the directory.");
+            return;
+        }
+
+        // 2. Sort the list by error count (Highest to Lowest)
+        logFiles.sort((a, b) -> Integer.compare(b.errorCount, a.errorCount));
+
+        // 3. Display the interactive menu
+        System.out.println("Available Log Files (Ordered by Error Frequency):");
+        System.out.println("--------------------------------------------------");
+        for (int i = 0; i < logFiles.size(); i++) {
+            LogInfo info = logFiles.get(i);
+            System.out.printf("[%d] %-45s | Errors: %-4d | Date: %s%n", 
+                (i + 1), info.path.getFileName(), info.errorCount, info.dateModified);
+        }
+
+        // 4. Ask the user for their choice
+        System.out.print("\nEnter the number of the file you want to parse (1-" + logFiles.size() + "): ");
+        Scanner scanner = new Scanner(System.in);
+        int choice = -1;
+        
+        try {
+            choice = Integer.parseInt(scanner.nextLine());
+        } catch (NumberFormatException e) {
+            // Handled by the bounds check below
+        }
+
+        if (choice < 1 || choice > logFiles.size()) {
+            System.out.println("Invalid selection. Exiting program.");
+            scanner.close();
+            return;
+        }
+
+        // 5. Parse the chosen file
+        System.out.println("\n==================================================");
+        processLogFile(logFiles.get(choice - 1).path);
+        
+        scanner.close();
+    }
+
+    /**
+     * Quickly scans a file to count how many errors it contains.
+     */
+    private static int countErrors(Path filePath) {
+        int count = 0;
+        try (Stream<String> lines = Files.lines(filePath, StandardCharsets.ISO_8859_1)) {
+            count = (int) lines.filter(line -> line.contains(" E/") || line.toLowerCase().contains("error")).count();
+        } catch (IOException e) {
+            System.err.println("Could not read file for counting: " + filePath.getFileName());
+        }
+        return count;
+    }
+
+    /**
+     * Grabs the last modified date of the file and formats it neatly.
+     */
+    private static String getFileDate(Path filePath) {
+        try {
+            FileTime time = Files.getLastModifiedTime(filePath);
+            return DATE_FORMATTER.format(time.toInstant());
+        } catch (IOException e) {
+            return "Unknown Date";
+        }
+    }
+
+    /**
+     * Reads the user's selected file line by line and prints matches.
+     */
+    private static void processLogFile(Path filePath) {
+        System.out.println("Parsing FILE: " + filePath.getFileName() + "\n");
+        try (Stream<String> lines = Files.lines(filePath, StandardCharsets.ISO_8859_1)) {
+            
+            Iterable<String> matchedLines = lines.filter(line -> TARGET_PATTERN.matcher(line).matches())::iterator;
+            
+            for (String line : matchedLines) {
+                if (line.contains(" E/") || line.toLowerCase().contains("error")) {
+                    System.out.println("[ERROR]   " + line);
+                } else {
+                    System.out.println("[WARNING] " + line);
+                }
+            }
+
+        } catch (IOException e) {
+            System.err.println("Could not read file " + filePath.getFileName() + ": " + e.getMessage());
+        }
+    }
+}
