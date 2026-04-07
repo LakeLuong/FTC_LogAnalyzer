@@ -1,0 +1,50 @@
+import os
+import subprocess
+from pathlib import Path
+
+# 1. Configuration (The computer needs these BEFORE the function starts)
+ADB_PATH = os.path.expandvars(r"%LOCALAPPDATA%\Android\Sdk\platform-tools\adb.exe")
+ROBOT_IP = "192.168.43.1:5555"
+LOCAL_LOG_PATH = r"C:\Users\ll12027884\Desktop\FTC_Log_Viewer"
+
+def sync_logs():
+    # Now the computer knows what LOCAL_LOG_PATH is!
+    Path(LOCAL_LOG_PATH).mkdir(parents=True, exist_ok=True)
+
+    if not os.path.exists(ADB_PATH):
+        print(f"ERROR: Could not find ADB at {ADB_PATH}")
+        print("Check if Android SDK Platform-Tools are installed in Android Studio.")
+        return
+
+    print(f"--- Starting Sync ---")
+    print(f"Connecting to robot at {ROBOT_IP}...")
+
+    # Connect to the robot
+    subprocess.run([ADB_PATH, "connect", ROBOT_IP])
+
+    print("Checking for logs...")
+
+    # Common FTC log locations
+    locations = ["/sdcard/FIRST/data/", "/sdcard/FIRST/"]
+
+    success = False
+    for loc in locations:
+        print(f"Trying to pull from {loc}...")
+        # We use capture_output=True so the console doesn't get messy
+        result = subprocess.run([ADB_PATH, "pull", loc, LOCAL_LOG_PATH], capture_output=True)
+
+        if result.returncode == 0:
+            print(f"SUCCESS: Pulled from {loc}")
+            success = True
+            break
+
+    if success:
+        print("\nSUCCESS: Files synced to Desktop!")
+    else:
+        print("\nERROR: Sync failed.")
+        print("1. Are you on the Robot's Wi-Fi?")
+        print("2. Is the Control Hub turned on?")
+        print("3. Try plugging into the Hub via USB-C cable.")
+
+if __name__ == "__main__":
+    sync_logs()
