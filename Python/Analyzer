@@ -1,0 +1,92 @@
+import os
+import re
+from datetime import datetime
+from pathlib import Path
+
+# The path to your logs (using raw string 'r' to handle backslashes)
+DIRECTORY_PATH = r"C:\Users\ll12027884\Desktop\FTC_Log_Viewer\FIRST\matchlogs"
+
+# Regex pattern: (?i) makes the whole group case-insensitive in Python
+TARGET_PATTERN = re.compile(r"(?i).*(\s[EW]/|error|warning).*")
+
+def get_file_date(file_path):
+    """Returns the last modified date as a formatted string."""
+    mtime = os.path.getmtime(file_path)
+    return datetime.fromtimestamp(mtime).strftime('%m/%d/%Y %H:%M:%S')
+
+def count_errors(file_path):
+    """Quickly scans the file for error/warning indicators."""
+    count = 0
+    try:
+        # 'latin-1' is the Python equivalent of Java's ISO_8859_1
+        with open(file_path, 'r', encoding='latin-1') as f:
+            for line in f:
+                if " E/" in line or "error" in line.lower():
+                    count += 1
+    except Exception as e:
+        print(f"Could not read {file_path.name}: {e}")
+    return count
+
+def process_log_file(file_path):
+    """Parses and prints the specific errors/warnings from the chosen file."""
+    print(f"\nParsing FILE: {file_path.name}\n")
+    print("=" * 50)
+    try:
+        with open(file_path, 'r', encoding='latin-1') as f:
+            for line in f:
+                line = line.strip()
+                if TARGET_PATTERN.match(line):
+                    if " E/" in line or "error" in line.lower():
+                        print(f"[ERROR]   {line}")
+                    else:
+                        print(f"[WARNING] {line}")
+    except Exception as e:
+        print(f"Error parsing file: {e}")
+
+def main():
+    dir_path = Path(DIRECTORY_PATH)
+
+    if not dir_path.exists() or not dir_path.is_dir():
+        print(f"Directory does not exist: {dir_path.absolute()}")
+        return
+
+    print("Scanning directory and counting errors... Please wait.\n")
+
+    log_files = []
+
+    # 1. Gather files and info
+    for file in dir_path.glob("*.txt"):
+        errors = count_errors(file)
+        date_str = get_file_date(file)
+        log_files.append({
+            "path": file,
+            "error_count": errors,
+            "date": date_str
+        })
+
+    if not log_files:
+        print("No .txt files found.")
+        return
+
+    # 2. Sort by error count (Highest to Lowest)
+    log_files.sort(key=lambda x: x['error_count'], reverse=True)
+
+    # 3. Display Menu
+    print("Available Log Files (Ordered by Error Frequency):")
+    print("-" * 50)
+    for i, info in enumerate(log_files, 1):
+        print(f"[{i}] {info['path'].name[:45]:<45} | Errors: {info['error_count']:<4} | Date: {info['date']}")
+
+    # 4. Ask user for choice
+    try:
+        choice = int(input(f"\nEnter the number of the file to parse (1-{len(log_files)}): "))
+        if 1 <= choice <= len(log_files):
+            # 5. Process selection
+            process_log_file(log_files[choice - 1]['path'])
+        else:
+            print("Invalid selection.")
+    except ValueError:
+        print("Please enter a valid number.")
+
+if __name__ == "__main__":
+    main()
